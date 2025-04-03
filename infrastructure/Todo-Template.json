@@ -1,0 +1,899 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS Infrstructure for Todo App",
+    "Resources": {
+        "TodoVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.0.0.0/16",
+                "EnableDnsSupport": true,
+                "EnableDnsHostnames": true,
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoVPC"
+                    }
+                ]
+            }
+        },
+        "PublicSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "CidrBlock": "10.0.1.0/24",
+                "AvailabilityZone": "eu-west-1a",
+                "MapPublicIpOnLaunch": true,
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoPublicSubnet1"
+                    }
+                ]
+            }
+        },
+        "PublicSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "CidrBlock": "10.0.3.0/24",
+                "AvailabilityZone": "eu-west-1c",
+                "MapPublicIpOnLaunch": true,
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoPublicSubnet2"
+                    }
+                ]
+            }
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "InternetGateway"
+                    }
+                ]
+            }
+        },
+        "InternetGatewayAttachment": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "DependsOn": [
+                "InternetGateway"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "InternetGatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            }
+        },
+        "PrivateSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "CidrBlock": "10.0.2.0/24",
+                "AvailabilityZone": "eu-west-1a",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoPrivateSubnet1"
+                    }
+                ]
+            }
+        },
+        "PrivateSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "CidrBlock": "10.0.4.0/24",
+                "AvailabilityZone": "eu-west-1c",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoPrivateSubnet2"
+                    }
+                ]
+            }
+        },
+        "NatGatewayEIP": {
+            "Type": "AWS::EC2::EIP",
+            "Properties": {
+                "Domain": "vpc"
+            }
+        },
+        "NatGateway": {
+            "Type": "AWS::EC2::NatGateway",
+            "DependsOn": [
+                "NatGatewayEIP"
+            ],
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PublicSubnet1"
+                },
+                "AllocationId": {
+                    "Fn::GetAtt": [
+                        "NatGatewayEIP",
+                        "AllocationId"
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-NatGateway"
+                    }
+                ]
+            }
+        },
+        "PublicRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-PublicRouteTable"
+                    }
+                ]
+            }
+        },
+        "PrivateRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-PrivateRouteTable"
+                    }
+                ]
+            }
+        },
+        "PublicRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "InternetGateway",
+                "PublicRouteTable"
+            ],
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            }
+        },
+        "PrivateRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "NatGateway",
+                "PrivateRouteTable"
+            ],
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "NatGatewayId": {
+                    "Ref": "NatGateway"
+                }
+            }
+        },
+        "PublicSubnet1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "PublicSubnet1",
+                "PublicRouteTable"
+            ],
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PublicSubnet1"
+                },
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable"
+                }
+            }
+        },
+        "PublicSubnet2RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "PublicSubnet2",
+                "PublicRouteTable"
+            ],
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PublicSubnet2"
+                },
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable"
+                }
+            }
+        },
+        "PrivateSubnet1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "PrivateSubnet1",
+                "PrivateRouteTable"
+            ],
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PrivateSubnet1"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable"
+                }
+            }
+        },
+        "PrivateSubnet2RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "PrivateSubnet2",
+                "PrivateRouteTable"
+            ],
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PrivateSubnet2"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable"
+                }
+            }
+        },
+        "ALBSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "GroupDescription": "Allow HTTP and HTTPS traffic",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-ALBSecurityGroup"
+                    }
+                ]
+            }
+        },
+        "ECSSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "DependsOn": [
+                "TodoVPC",
+                "ALBSecurityGroup"
+            ],
+            "Properties": {
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "GroupDescription": "Allow HTTP and HTTPS traffic from ALB",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "SourceSecurityGroupId": {
+                            "Ref": "ALBSecurityGroup"
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-ECSSecurityGroup"
+                    }
+                ]
+            }
+        },
+        "ECSCluster": {
+            "Type": "AWS::ECS::Cluster",
+            "DependsOn": [
+                "TodoVPC"
+            ],
+            "Properties": {
+                "ClusterName": "TodoECSCluster",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "TodoECSCluster"
+                    }
+                ]
+            }
+        },
+        "ECSTaskDefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "Family": "todo-task",
+                "NetworkMode": "awsvpc",
+                "Cpu": "256",
+                "Memory": "512",
+                "RequiresCompatibilities": [
+                    "FARGATE"
+                ],
+                "ExecutionRoleArn": {
+                    "Fn::GetAtt": [
+                        "TaskExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "TaskRoleArn": {
+                    "Fn::GetAtt": [
+                        "ECSServiceRole",
+                        "Arn"
+                    ]
+                },
+                "ContainerDefinitions": [
+                    {
+                        "Name": "todo-container",
+                        "Image": "public.ecr.aws/b8c4r0w8/todo_repo:henryagyemang_todo_app",
+                        "Essential": true,
+                        "PortMappings": [
+                            {
+                                "ContainerPort": 3000,
+                                "HostPort": 3000,
+                                "Protocol": "tcp"
+                            }
+                        ],
+                        "Environment": [
+                            {
+                                "Name": "DYNAMODB_TABLE",
+                                "Value": "db_todo_app"
+                            },
+                            {
+                                "Name": "AWS_REGION",
+                                "Value": {
+                                    "Ref": "AWS::Region"
+                                }
+                            },
+                            {
+                                "Name": "PORT",
+                                "Value": "3000"
+                            }
+                        ],
+                        "LogConfiguration": {
+                            "LogDriver": "awslogs",
+                            "Options": {
+                                "awslogs-group": {
+                                    "Ref": "ECSLogGroup"
+                                },
+                                "awslogs-region": {
+                                    "Ref": "AWS::Region"
+                                },
+                                "awslogs-stream-prefix": "ecs",
+                                "awslogs-create-group": "true"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "ECSService": {
+            "Type": "AWS::ECS::Service",
+            "DependsOn": [
+                "ECSTaskDefinition",
+                "PrivateSubnet1",
+                "PrivateSubnet2",
+                "ECSSecurityGroup",
+                "BlueTargetGroup",
+                "GreenTargetGroup",
+                "ALBListener"
+            ],
+            "Properties": {
+                "Cluster": {
+                    "Ref": "ECSCluster"
+                },
+                "ServiceName": "TodoECSService",
+                "LaunchType": "FARGATE",
+                "TaskDefinition": {
+                    "Ref": "ECSTaskDefinition"
+                },
+                "DesiredCount": 1,
+                "NetworkConfiguration": {
+                    "AwsvpcConfiguration": {
+                        "Subnets": [
+                            {
+                                "Ref": "PrivateSubnet1"
+                            },
+                            {
+                                "Ref": "PrivateSubnet2"
+                            }
+                        ],
+                        "SecurityGroups": [
+                            {
+                                "Ref": "ECSSecurityGroup"
+                            }
+                        ]
+                    }
+                },
+                "LoadBalancers": [
+                    {
+                        "ContainerName": "todo-container",
+                        "ContainerPort": 3000,
+                        "TargetGroupArn": {
+                            "Ref": "BlueTargetGroup"
+                        }
+                    }
+                ],
+                "DeploymentController": {
+                    "Type": "CODE_DEPLOY"
+                }
+            }
+        },
+        "ALB": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "DependsOn": [
+                "PublicSubnet1",
+                "PublicSubnet2",
+                "ALBSecurityGroup"
+            ],
+            "Properties": {
+                "Name": "TodoALB",
+                "Subnets": [
+                    {
+                        "Ref": "PublicSubnet1"
+                    },
+                    {
+                        "Ref": "PublicSubnet2"
+                    }
+                ],
+                "SecurityGroups": [
+                    {
+                        "Ref": "ALBSecurityGroup"
+                    }
+                ],
+                "Scheme": "internet-facing",
+                "Type": "application",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-ALB"
+                    }
+                ]
+            }
+        },
+        "ALBListener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "DependsOn": [
+                "ALB",
+                "BlueTargetGroup",
+                "GreenTargetGroup"
+            ],
+            "Properties": {
+                "LoadBalancerArn": {
+                    "Ref": "ALB"
+                },
+                "Port": 80,
+                "Protocol": "HTTP",
+                "DefaultActions": [
+                    {
+                        "Type": "forward",
+                        "TargetGroupArn": {
+                            "Ref": "BlueTargetGroup"
+                        }
+                    }
+                ]
+            }
+        },
+        "ALBListenerRule": {
+            "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn": [
+                "ALBListener",
+                "BlueTargetGroup"
+            ],
+            "Properties": {
+                "ListenerArn": {
+                    "Ref": "ALBListener"
+                },
+                "Priority": 1,
+                "Conditions": [
+                    {
+                        "Field": "path-pattern",
+                        "Values": [
+                            "*"
+                        ]
+                    }
+                ],
+                "Actions": [
+                    {
+                        "Type": "forward",
+                        "TargetGroupArn": {
+                            "Ref": "BlueTargetGroup"
+                        }
+                    }
+                ]
+            }
+        },
+        "BlueTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": [
+                "TodoVPC",
+                "ALB"
+            ],
+            "Properties": {
+                "Name": "TodoBlueTargetGroup",
+                "Port": 3000,
+                "Protocol": "HTTP",
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "HealthCheckPath": "/",
+                "HealthCheckIntervalSeconds": 30,
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "UnhealthyThresholdCount": 2,
+                "TargetType": "ip",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-BlueTargetGroup"
+                    }
+                ]
+            }
+        },
+        "GreenTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": [
+                "TodoVPC",
+                "ALB"
+            ],
+            "Properties": {
+                "Name": "TodoGreenTargetGroup",
+                "Port": 3000,
+                "Protocol": "HTTP",
+                "VpcId": {
+                    "Ref": "TodoVPC"
+                },
+                "HealthCheckPath": "/",
+                "HealthCheckIntervalSeconds": 30,
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "UnhealthyThresholdCount": 2,
+                "TargetType": "ip",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Todo-GreenTargetGroup"
+                    }
+                ]
+            }
+        },
+        "TaskExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "ecs-tasks.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "CloudWatchLogsAccess",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": {
+                                        "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/todo-app:*"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "ECSExecutionPolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ecr:GetAuthorizationToken",
+                                        "ecr:BatchCheckLayerAvailability",
+                                        "ecr:GetDownloadUrlForLayer",
+                                        "ecr:BatchGetImage",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "ECSServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": "ECSServiceRole",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "ecs-tasks.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "ECSServicePolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "elasticloadbalancing:DeregisterTargets",
+                                        "elasticloadbalancing:RegisterTargets",
+                                        "elasticloadbalancing:DescribeTargetHealth"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "ECSDynamoDBPolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:PutItem",
+                                        "dynamodb:GetItem",
+                                        "dynamodb:UpdateItem",
+                                        "dynamodb:DeleteItem",
+                                        "dynamodb:Scan",
+                                        "dynamodb:Query",
+                                        "dynamodb:BatchGetItem",
+                                        "dynamodb:BatchWriteItem"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/db_todo_app"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/db_todo_app/index/*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeDeployRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codedeploy.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+                ]
+            }
+        },
+        "ECSLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+                "LogGroupName": "/ecs/todo-app",
+                "RetentionInDays": 30
+            }
+        },
+        "CodeDeployApp": {
+            "Type": "AWS::CodeDeploy::Application",
+            "Properties": {
+                "ComputePlatform": "ECS",
+                "ApplicationName": "TodoApp"
+            }
+        },
+        "CodeDeployGroup": {
+            "Type": "AWS::CodeDeploy::DeploymentGroup",
+            "DependsOn": [
+                "CodeDeployRole",
+                "BlueTargetGroup",
+                "GreenTargetGroup",
+                "ALBListener"
+            ],
+            "Properties": {
+                "ApplicationName": {
+                    "Ref": "CodeDeployApp"
+                },
+                "ServiceRoleArn": {
+                    "Fn::GetAtt": [
+                        "CodeDeployRole",
+                        "Arn"
+                    ]
+                },
+                "DeploymentConfigName": "CodeDeployDefault.ECSAllAtOnce",
+                "DeploymentStyle": {
+                    "DeploymentType": "BLUE_GREEN",
+                    "DeploymentOption": "WITH_TRAFFIC_CONTROL"
+                },
+                "BlueGreenDeploymentConfiguration": {
+                    "TerminateBlueInstancesOnDeploymentSuccess": {
+                        "Action": "TERMINATE",
+                        "TerminationWaitTimeInMinutes": 5
+                    },
+                    "BlueTargetGroupInfo": {
+                        "Name": {
+                            "Ref": "BlueTargetGroup"
+                        }
+                    },
+                    "GreenTargetGroupInfo": {
+                        "Name": {
+                            "Ref": "GreenTargetGroup"
+                        }
+                    },
+                    "DeploymentReadyOption": {
+                        "ActionOnTimeout": "CONTINUE_DEPLOYMENT"
+                    }
+                },
+                "LoadBalancerInfo": {
+                    "TargetGroupPairInfoList": [
+                        {
+                            "TargetGroups": [
+                                {
+                                    "Name": {
+                                        "Ref": "BlueTargetGroup"
+                                    }
+                                },
+                                {
+                                    "Name": {
+                                        "Ref": "GreenTargetGroup"
+                                    }
+                                }
+                            ],
+                            "ProdTrafficRoute": {
+                                "ListenerArns": [
+                                    {
+                                        "Ref": "ALBListener"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "ECSService": {
+                    "ClusterName": {
+                        "Ref": "ECSCluster"
+                    },
+                    "ServiceName": {
+                        "Ref": "ECSService"
+                    }
+                }
+            }
+        },
+        "ECSScalingPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "ECSScalingPolicy",
+                "PolicyType": "TargetTrackingScaling",
+                "ScalingTargetId": {
+                    "Ref": "ECSScalingTarget"
+                },
+                "TargetTrackingScalingPolicyConfiguration": {
+                    "TargetValue": 50.0,
+                    "PredefinedMetricSpecification": {
+                        "PredefinedMetricType": "ECSServiceAverageCPUUtilization"
+                    },
+                    "ScaleInCooldown": 60,
+                    "ScaleOutCooldown": 60
+                }
+            }
+        },
+        "ECSScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "Properties": {
+                "MaxCapacity": 4,
+                "MinCapacity": 1,
+                "ResourceId": {
+                    "Fn::Sub": "service/${ECSCluster}/${ECSService}"
+                },
+                "RoleARN": {
+                    "Fn::GetAtt": [
+                        "ECSServiceRole",
+                        "Arn"
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "ALBDNSName": {
+            "Description": "DNS name of the ALB",
+            "Value": {
+                "Fn::GetAtt": [
+                    "ALB",
+                    "DNSName"
+                ]
+            }
+        },
+        "ServiceURL": {
+            "Description": "URL of the Todo App service",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "ALB",
+                                "DNSName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }
+}
