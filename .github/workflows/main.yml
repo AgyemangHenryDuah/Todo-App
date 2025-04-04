@@ -83,19 +83,20 @@ jobs:
                 },
                 "environment": [
                   {
-                                "Name": "DYNAMODB_TABLE",
-                                "Value": "db_todo_app"
-                            },
-                            {
-                                "Name": "AWS_REGION",
-                                "Value": {
-                                    "Ref": "AWS::Region"
-                                }
-                            },
-                            {
-                                "Name": "PORT",
-                                "Value": "3000"
-                            }
+                    "name": "DYNAMODB_TABLE",
+                    "value": "db_todo_app"
+                  },
+                  {
+                    "name": "AWS_REGION",
+                    "value": {
+                      "Fn::Sub": "${AWS_REGION}"
+                    }
+                  },
+                  {
+                    "name": "PORT",
+                    "value": "3000"
+                  }
+                  
                 ]
               }
             ]
