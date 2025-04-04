@@ -72,5 +72,5 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           codedeploy-appspec: appspec.json
           codedeploy-application: TodoApp
-          codedeploy-deployment-group: Todo-Lab-CodeDeployGroup-ZCNJ326RHRJG
+          codedeploy-deployment-group: Todo-Lab-CodeDeployGroup-UU7EIXVPCKXS
 

@@ -798,14 +798,10 @@
                         {
                             "TargetGroups": [
                                 {
-                                    "Name": {
-                                        "Ref": "BlueTargetGroup"
-                                    }
+                                    "Name": "Todo-Blue"
                                 },
                                 {
-                                    "Name": {
-                                        "Ref": "GreenTargetGroup"
-                                    }
+                                    "Name": "Todo-Green"
                                 }
                             ],
                             "ProdTrafficRoute": {
