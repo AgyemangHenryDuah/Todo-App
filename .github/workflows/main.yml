@@ -9,12 +9,10 @@ env:
   AWS_REGION: eu-west-1
   ECR_PUBLIC_REGISTRY: public.ecr.aws/b8c4r0w8
   ECR_REPOSITORY: todo_repo
-  IMAGE_TAG: henryagyemang_todo_app
+  IMAGE_TAG: ${{ github.sha }}  # Immutable tag
   ECS_CLUSTER: TodoECSCluster
   ECS_SERVICE: TodoECSService
   ECS_TASK_FAMILY: todo-task
-  CODEDEPLOY_APPLICATION: TodoApp
-  CODEDEPLOY_DEPLOYMENT_GROUP: Todo-Lab-CodeDeployGroup-1F6IZS0BXUDH
   CONTAINER_DEFINITION: todo-container
 
 jobs:
@@ -22,6 +20,10 @@ jobs:
     name: Build and Deploy
     runs-on: ubuntu-latest
     environment: production
+    concurrency: 
+      group: production-deploy
+      cancel-in-progress: true
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -37,128 +39,36 @@ jobs:
         run: |
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build Docker image
         id: build-image
         run: |
-          docker build -t $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build --platform linux/amd64 -t $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Get AWS Account ID
-        id: get-aws-account
+      - name: Get deployment group from CloudFormation
+        id: get-deployment-group
         run: |
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
-          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          DEPLOYMENT_GROUP=$(aws cloudformation describe-stacks \
+            --stack-name YourStackName \
+            --query 'Stacks[0].Outputs[?OutputKey==`CodeDeployGroupName`].OutputValue' \
+            --output text \
+            --region $AWS_REGION)
+          echo "CODEDEPLOY_DEPLOYMENT_GROUP=$DEPLOYMENT_GROUP" >> $GITHUB_ENV
 
-      - name: Generate task definition JSON
-        run: |
-          cat <<EOF > task-definition.json
-          {
-            "family": "${{ env.ECS_TASK_FAMILY }}",
-            "cpu": "512",
-            "memory": "1024",
-            "networkMode": "awsvpc",
-            "requiresCompatibilities": ["FARGATE"],
-            "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ECSServiceRole",
-            "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/TaskExecutionRole",
-            "containerDefinitions": [
-              {
-                "name": "${{ env.CONTAINER_DEFINITION }}",
-                "image": "${{ steps.build-image.outputs.image }}",
-                "essential": true,
-                "portMappings": [
-                  {
-                    "containerPort": 3000,
-                    "hostPort": 3000,
-                    "protocol": "tcp"
-                  }
-                ],
-                "logConfiguration": {
-                  "logDriver": "awslogs",
-                  "options": {
-                    "awslogs-group": "/ecs/todo-app",
-                    "awslogs-region": "${{ env.AWS_REGION }}",
-                    "awslogs-stream-prefix": "ecs"
-                  }
-                },
-                "environment": [
-                  {
-                    "name": "DYNAMODB_TABLE",
-                    "value": "db_todo_app"
-                  },
-                  {
-                    "name": "AWS_REGION",
-                    "value": "eu-west-1"
-                  },
-                  {
-                    "name": "PORT",
-                    "value": "3000"
-                  }
-                  
-                ]
-              }
-            ]
-          }
-          EOF
+      - name: Generate task definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json  # Store this in your repo
+          container-name: ${{ env.CONTAINER_DEFINITION }}
+          image: ${{ steps.build-image.outputs.image }}
 
-      - name: Update task definition with account ID
-        run: |
-          sed -i "s/\${AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" task-definition.json
-          sed -i "s/\${AWS_REGION}/$AWS_REGION/g" task-definition.json
-
-      - name: Register new task definition
-        id: register-task
-        run: |
-          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://task-definition.json \
-            --region ${{ env.AWS_REGION }} \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
-          echo "Task Definition ARN: $TASK_DEFINITION_ARN"
-          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> $GITHUB_OUTPUT
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Trigger CodeDeploy deployment
-        id: deploy
-        run: |
-          # Create the AppSpec content
-          APPSPEC_CONTENT=$(jq -n \
-            --arg td "${{ steps.register-task.outputs.task_definition_arn }}" \
-            --arg cn "${{ env.CONTAINER_DEFINITION }}" \
-            '{
-              "version": 0.0,
-              "Resources": [{
-                "TargetService": {
-                  "Type": "AWS::ECS::Service",
-                  "Properties": {
-                    "TaskDefinition": $td,
-                    "LoadBalancerInfo": {
-                      "ContainerName": $cn,
-                      "ContainerPort": 3000
-                    }
-                  }
-                }
-              }]
-            }')
-
-          # Create deployment
-          DEPLOYMENT_ID=$(aws deploy create-deployment \
-            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
-            --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
-            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
-            --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')\"}}" \
-            --region ${{ env.AWS_REGION }} \
-            --query 'deploymentId' \
-            --output text)
-
-          echo "Deployment ID: $DEPLOYMENT_ID"
-          echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_ENV
-
-      - name: Monitor deployment
-        run: |
-          aws deploy wait deployment-successful \
-            --deployment-id ${{ env.deployment_id }} \
-            --region ${{ env.AWS_REGION }}
-          echo "Deployment completed successfully"
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          codedeploy-appspec: appspec.json  # Store this in your repo
+          codedeploy-application: ${{ env.CODEDEPLOY_APPLICATION }}
+          codedeploy-deployment-group: ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }}
