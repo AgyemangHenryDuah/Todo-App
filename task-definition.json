@@ -1,12 +1,8 @@
 {
     "family": "todo-task",
     "networkMode": "awsvpc",
-    "executionRoleArn": {
-        "Fn::GetAtt": [
-            "EcsTaskExecutionRole",
-            "Arn"
-        ]
-    },
+    "executionRoleArn": "arn:aws:iam::061051226504:role/Todo-Lab-TaskExecutionRole-x8yePR7adYtq",
+    "taskRoleArn": "arn:aws:iam::061051226504:role/ECSServiceRole",
     "containerDefinitions": [
         {
             "name": "todo-container",
