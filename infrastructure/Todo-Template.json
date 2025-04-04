@@ -311,8 +311,8 @@
                 "SecurityGroupIngress": [
                     {
                         "IpProtocol": "tcp",
-                        "FromPort": 80,
-                        "ToPort": 80,
+                        "FromPort": 3000,
+                        "ToPort": 3000,
                         "SourceSecurityGroupId": {
                             "Ref": "ALBSecurityGroup"
                         }
@@ -731,9 +731,13 @@
                         {
                             "Effect": "Allow",
                             "Principal": {
-                                "Service": "codedeploy.amazonaws.com"
+                                "Service": [
+                                    "codedeploy.amazonaws.com"
+                                ]
                             },
-                            "Action": "sts:AssumeRole"
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
                         }
                     ]
                 },
@@ -759,7 +763,7 @@
         "CodeDeployGroup": {
             "Type": "AWS::CodeDeploy::DeploymentGroup",
             "DependsOn": [
-                "CodeDeployRole",
+                "ECSService",
                 "BlueTargetGroup",
                 "GreenTargetGroup",
                 "ALBListener"
@@ -784,18 +788,9 @@
                         "Action": "TERMINATE",
                         "TerminationWaitTimeInMinutes": 5
                     },
-                    "BlueTargetGroupInfo": {
-                        "Name": {
-                            "Ref": "BlueTargetGroup"
-                        }
-                    },
-                    "GreenTargetGroupInfo": {
-                        "Name": {
-                            "Ref": "GreenTargetGroup"
-                        }
-                    },
                     "DeploymentReadyOption": {
-                        "ActionOnTimeout": "CONTINUE_DEPLOYMENT"
+                        "ActionOnTimeout": "CONTINUE_DEPLOYMENT",
+                        "WaitTimeInMinutes": 0
                     }
                 },
                 "LoadBalancerInfo": {
@@ -823,14 +818,43 @@
                         }
                     ]
                 },
-                "ECSService": {
-                    "ClusterName": {
-                        "Ref": "ECSCluster"
-                    },
-                    "ServiceName": {
-                        "Ref": "ECSService"
+                "ECSServices": [
+                    {
+                        "ServiceName": {
+                            "Fn::GetAtt": [
+                                "ECSService",
+                                "Name"
+                            ]
+                        },
+                        "ClusterName": {
+                            "Ref": "ECSCluster"
+                        }
                     }
-                }
+                ]
+            }
+        },
+        "ECSAutoScalingRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "application-autoscaling.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole"
+                ]
             }
         },
         "ECSScalingPolicy": {
@@ -853,18 +877,22 @@
         },
         "ECSScalingTarget": {
             "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": [
+                "ECSService",
+                "ECSAutoScalingRole"
+            ],
             "Properties": {
                 "MaxCapacity": 4,
                 "MinCapacity": 1,
-                "ResourceId": {
-                    "Fn::Sub": "service/${ECSCluster}/${ECSService}"
-                },
+                "ResourceId": "service/TodoECSCluster/TodoECSService",
                 "RoleARN": {
                     "Fn::GetAtt": [
-                        "ECSServiceRole",
+                        "ECSAutoScalingRole",
                         "Arn"
                     ]
-                }
+                },
+                "ScalableDimension": "ecs:service:DesiredCount",
+                "ServiceNamespace": "ecs"
             }
         }
     },
