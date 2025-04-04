@@ -66,6 +66,7 @@ jobs:
           environment-variables: |
             DYNAMODB_TABLE=db_todo_app
             AWS_REGION=eu-west-1
+            PORT=3000
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1

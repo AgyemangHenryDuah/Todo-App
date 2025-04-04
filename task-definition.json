@@ -1,12 +1,11 @@
 {
     "family": "todo-task",
     "networkMode": "awsvpc",
-    "executionRoleArn": "arn:aws:iam::061051226504:role/Todo-Lab-TaskExecutionRole-x8yePR7adYtq",
+    "executionRoleArn": "arn:aws:iam::061051226504:role/ECSServiceRole",
     "containerDefinitions": [
         {
             "name": "todo-container",
             "image": "public.ecr.aws/b8c4r0w8/todo_repo:henryagyemang_todo_app",
-            
             "essential": true,
             "portMappings": [
                 {
