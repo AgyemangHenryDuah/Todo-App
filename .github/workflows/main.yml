@@ -1,99 +1,163 @@
-name: Trigger Blue/Green Deployment
+name: Build, Push, and Deploy
 on:
-  workflow_dispatch:  # Allows manual triggering
-  repository_dispatch:  # Can be triggered via API
-  schedule:
-    - cron: '0 10 * * *'  # Optional: Daily at 10am UTC (adjust as needed)
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: [main]
 
 env:
   AWS_REGION: eu-west-1
+  ECR_PUBLIC_REGISTRY: public.ecr.aws/b8c4r0w8
+  ECR_REPOSITORY: todo_repo
+  IMAGE_TAG: henryagyemang_todo_app
   ECS_CLUSTER: TodoECSCluster
   ECS_SERVICE: TodoECSService
-  CODEDEPLOY_APP: TodoApp
-  CODEDEPLOY_GROUP: TodoDeploymentGroup
-  TASK_DEFINITION: todo-task
+  ECS_TASK_FAMILY: todo-task
+  CODEDEPLOY_APPLICATION: TodoApp
+  CODEDEPLOY_DEPLOYMENT_GROUP: Todo-Lab-CodeDeployGroup-1F6IZS0BXUDH
+  CONTAINER_DEFINITION: todo-container
 
 jobs:
-  trigger-deployment:
-    name: Trigger Blue/Green Deployment
+  build-and-deploy:
+    name: Build and Deploy
     runs-on: ubuntu-latest
     environment: production
-    permissions:
-      id-token: write   # For OIDC auth
-      contents: read    # For code checkout
-
     steps:
-    - name: Checkout code (optional)
-      uses: actions/checkout@v3
-      if: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Get latest task definition
-      id: get-task-def
-      run: |
-        LATEST_REVISION=$(aws ecs describe-task-definition \
-          --task-definition $TASK_DEFINITION \
-          --query 'taskDefinition.revision' \
-          --output text)
-        echo "LATEST_REVISION=$LATEST_REVISION" >> $GITHUB_OUTPUT
+      - name: Login to Amazon Public ECR
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
-    - name: Trigger CodeDeploy deployment
-      id: trigger-deploy
-      run: |
-        aws deploy create-deployment \
-          --application-name $CODEDEPLOY_APP \
-          --deployment-group-name $CODEDEPLOY_GROUP \
-          --revision '{
-            "revisionType": "AppSpecContent",
-            "appSpecContent": {
-              "content": "{
-                \"version\": 1,
-                \"Resources\": [{
-                  \"TargetService\": {
-                    \"Type\": \"AWS::ECS::Service\",
-                    \"Properties\": {
-                      \"TaskDefinition\": \"arn:aws:ecs:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:task-definition/${{ env.TASK_DEFINITION }}:${{ steps.get-task-def.outputs.LATEST_REVISION }}\",
-                      \"LoadBalancerInfo\": {
-                        \"ContainerName\": \"todo-container\",
-                        \"ContainerPort\": 3000
-                      }
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        run: |
+          docker build -t $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Get AWS Account ID
+        id: get-aws-account
+        run: |
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+
+      - name: Generate task definition JSON
+        run: |
+          cat <<EOF > task-definition.json
+          {
+            "family": "${{ env.ECS_TASK_FAMILY }}",
+            "cpu": "512",
+            "memory": "1024",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ECSServiceRole",
+            "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/TaskExecutionRole",
+            "containerDefinitions": [
+              {
+                "name": "${{ env.CONTAINER_DEFINITION }}",
+                "image": "${{ steps.build-image.outputs.image }}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/todo-app",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                },
+                "environment": [
+                  {
+                                "Name": "DYNAMODB_TABLE",
+                                "Value": "db_todo_app"
+                            },
+                            {
+                                "Name": "AWS_REGION",
+                                "Value": {
+                                    "Ref": "AWS::Region"
+                                }
+                            },
+                            {
+                                "Name": "PORT",
+                                "Value": "3000"
+                            }
+                ]
+              }
+            ]
+          }
+          EOF
+
+      - name: Update task definition with account ID
+        run: |
+          sed -i "s/\${AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" task-definition.json
+          sed -i "s/\${AWS_REGION}/$AWS_REGION/g" task-definition.json
+
+      - name: Register new task definition
+        id: register-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "Task Definition ARN: $TASK_DEFINITION_ARN"
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> $GITHUB_OUTPUT
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Trigger CodeDeploy deployment
+        run: |
+          # Create the AppSpec content
+          APPSPEC_CONTENT=$(jq -n \
+            --arg td "${{ steps.register-task.outputs.task_definition_arn }}" \
+            --arg cn "${{ env.CONTAINER_DEFINITION }}" \
+            '{
+              "version": 0.0,
+              "Resources": [{
+                "TargetService": {
+                  "Type": "AWS::ECS::Service",
+                  "Properties": {
+                    "TaskDefinition": $td,
+                    "LoadBalancerInfo": {
+                      "ContainerName": $cn,
+                      "ContainerPort": 3000
                     }
                   }
-                }]
-              }"
-            }
-          }'
-        echo "Deployment triggered successfully"
+                }
+              }]
+            }')
 
-    - name: Monitor deployment
-      run: |
-        # Get the most recent deployment ID
-        DEPLOYMENT_ID=$(aws deploy list-deployments \
-          --application-name $CODEDEPLOY_APP \
-          --deployment-group-name $CODEDEPLOY_GROUP \
-          --max-items 1 \
-          --query 'deployments[0]' \
-          --output text)
-        
-        echo "Monitoring deployment: $DEPLOYMENT_ID"
-        
-        # Wait for deployment completion
-        aws deploy wait deployment-successful \
-          --deployment-id $DEPLOYMENT_ID
-        
-        echo "Deployment completed successfully"
+          # Create deployment
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+            --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
+            --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')\"}}" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'deploymentId' \
+            --output text)
 
-    - name: Notify on success (optional)
-      if: success()
-      uses: act10ns/slack@v1
-      with:
-        status: ${{ job.status }}
-        steps: ${{ toJson(steps) }}
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+      - name: Monitor deployment
+        run: |
+          aws deploy wait deployment-successful \
+            --deployment-id $DEPLOYMENT_ID \
+            --region ${{ env.AWS_REGION }}
+          echo "Deployment completed successfully"
