@@ -88,9 +88,7 @@ jobs:
                   },
                   {
                     "name": "AWS_REGION",
-                    "value": {
-                      "Fn::Sub": "${AWS_REGION}"
-                    }
+                    "value": "eu-west-1"
                   },
                   {
                     "name": "PORT",
