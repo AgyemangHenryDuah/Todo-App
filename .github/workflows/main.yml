@@ -1,26 +1,31 @@
-name: Build and Push to ECR
+name: Trigger Blue/Green Deployment
 on:
-  push:
-    branches: [ "main" ]
+  workflow_dispatch:  # Allows manual triggering
+  repository_dispatch:  # Can be triggered via API
+  schedule:
+    - cron: '0 10 * * *'  # Optional: Daily at 10am UTC (adjust as needed)
+
 env:
   AWS_REGION: eu-west-1
-  ECR_PUBLIC_REGISTRY: public.ecr.aws/b8c4r0w8
-  ECR_REPOSITORY: todo_repo
-  IMAGE_TAG: henryagyemang_todo_app
+  ECS_CLUSTER: TodoECSCluster
+  ECS_SERVICE: TodoECSService
+  CODEDEPLOY_APP: TodoApp
+  CODEDEPLOY_GROUP: TodoDeploymentGroup
   TASK_DEFINITION: todo-task
 
 jobs:
-  build-and-push:
-    name: Build and Push
+  trigger-deployment:
+    name: Trigger Blue/Green Deployment
     runs-on: ubuntu-latest
     environment: production
     permissions:
-      id-token: write
-      contents: read
-    
+      id-token: write   # For OIDC auth
+      contents: read    # For code checkout
+
     steps:
-    - name: Checkout code
+    - name: Checkout code (optional)
       uses: actions/checkout@v3
+      if: ${{ github.event_name == 'workflow_dispatch' }}
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
@@ -29,32 +34,66 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Login to Amazon Public ECR
+    - name: Get latest task definition
+      id: get-task-def
       run: |
-        aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+        LATEST_REVISION=$(aws ecs describe-task-definition \
+          --task-definition $TASK_DEFINITION \
+          --query 'taskDefinition.revision' \
+          --output text)
+        echo "LATEST_REVISION=$LATEST_REVISION" >> $GITHUB_OUTPUT
 
-    - name: Build, tag, and push image
-      id: build-image
+    - name: Trigger CodeDeploy deployment
+      id: trigger-deploy
       run: |
-        docker build -t $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        aws deploy create-deployment \
+          --application-name $CODEDEPLOY_APP \
+          --deployment-group-name $CODEDEPLOY_GROUP \
+          --revision '{
+            "revisionType": "AppSpecContent",
+            "appSpecContent": {
+              "content": "{
+                \"version\": 1,
+                \"Resources\": [{
+                  \"TargetService\": {
+                    \"Type\": \"AWS::ECS::Service\",
+                    \"Properties\": {
+                      \"TaskDefinition\": \"arn:aws:ecs:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:task-definition/${{ env.TASK_DEFINITION }}:${{ steps.get-task-def.outputs.LATEST_REVISION }}\",
+                      \"LoadBalancerInfo\": {
+                        \"ContainerName\": \"todo-container\",
+                        \"ContainerPort\": 3000
+                      }
+                    }
+                  }
+                }]
+              }"
+            }
+          }'
+        echo "Deployment triggered successfully"
 
-    - name: Update task definition
-      id: update-task-def
+    - name: Monitor deployment
       run: |
-        # Get current task definition
-        TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION --query taskDefinition)
+        # Get the most recent deployment ID
+        DEPLOYMENT_ID=$(aws deploy list-deployments \
+          --application-name $CODEDEPLOY_APP \
+          --deployment-group-name $CODEDEPLOY_GROUP \
+          --max-items 1 \
+          --query 'deployments[0]' \
+          --output text)
         
-        # Update image in task definition
-        NEW_DEF=$(echo $TASK_DEF | jq --arg IMAGE "${{ steps.build-image.outputs.image }}" '.containerDefinitions[0].image = $IMAGE')
+        echo "Monitoring deployment: $DEPLOYMENT_ID"
         
-        # Remove unwanted fields
-        NEW_DEF=$(echo $NEW_DEF | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+        # Wait for deployment completion
+        aws deploy wait deployment-successful \
+          --deployment-id $DEPLOYMENT_ID
         
-        # Register new task definition
-        aws ecs register-task-definition --cli-input-json "$NEW_DEF"
-        
-        # Get new revision
-        NEW_REV=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION --query 'taskDefinition.revision' --output text)
-        echo "task_def_arn=arn:aws:ecs:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:task-definition/$TASK_DEFINITION:$NEW_REV" >> $GITHUB_OUTPUT
+        echo "Deployment completed successfully"
+
+    - name: Notify on success (optional)
+      if: success()
+      uses: act10ns/slack@v1
+      with:
+        status: ${{ job.status }}
+        steps: ${{ toJson(steps) }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
