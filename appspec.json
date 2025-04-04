@@ -8,8 +8,7 @@
                     "TaskDefinition": "<TASK_DEFINITION>",
                     "LoadBalancerInfo": {
                         "ContainerName": "todo-container",
-                        "ContainerPort": 3000,
-                        "TargetGroupName": "Todo-Blue"
+                        "ContainerPort": 3000
                     }
                 }
             }
