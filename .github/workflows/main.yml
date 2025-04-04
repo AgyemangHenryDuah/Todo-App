@@ -70,5 +70,5 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           codedeploy-appspec: appspec.json
-          codedeploy-application: ${{ env.CODEDEPLOY_APPLICATION }}
+          codedeploy-application: TodoApp
           codedeploy-deployment-group: ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }}
