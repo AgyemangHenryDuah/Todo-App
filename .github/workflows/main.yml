@@ -9,7 +9,7 @@ env:
   AWS_REGION: eu-west-1
   ECR_PUBLIC_REGISTRY: public.ecr.aws/b8c4r0w8
   ECR_REPOSITORY: todo_repo
-  IMAGE_TAG: ${{ github.sha }}  # Immutable tag
+  IMAGE_TAG: ${{ github.sha }}
   ECS_CLUSTER: TodoECSCluster
   ECS_SERVICE: TodoECSService
   ECS_TASK_FAMILY: todo-task
@@ -63,10 +63,6 @@ jobs:
           task-definition: task-definition.json
           container-name: ${{ env.CONTAINER_DEFINITION }}
           image: ${{ steps.build-image.outputs.image }}
-          environment-variables: |
-            DYNAMODB_TABLE=db_todo_app
-            AWS_REGION=eu-west-1
-            PORT=3000
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
