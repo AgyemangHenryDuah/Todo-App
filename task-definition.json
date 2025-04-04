@@ -1,10 +1,9 @@
 {
-    "family": "",
+    "family": "todo-task",
     "networkMode": "awsvpc",
     "executionRoleArn": "",
     "containerDefinitions": [
         {
-            "family": "todo-task",
             "name": "todo-container",
             "image": "public.ecr.aws/b8c4r0w8/todo_repo:henryagyemang_todo_app",
             "essential": true,
