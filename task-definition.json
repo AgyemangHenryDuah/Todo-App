@@ -1,7 +1,7 @@
 {
     "family": "todo-task",
     "networkMode": "awsvpc",
-    "executionRoleArn": "",
+    "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/TaskExecutionRole",
     "containerDefinitions": [
         {
             "name": "todo-container",
