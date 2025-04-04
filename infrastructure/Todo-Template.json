@@ -551,7 +551,7 @@
                 "ALB"
             ],
             "Properties": {
-                "Name": "TodoBlueTargetGroup",
+                "Name": "Todo-Blue",
                 "Port": 3000,
                 "Protocol": "HTTP",
                 "VpcId": {
@@ -578,7 +578,7 @@
                 "ALB"
             ],
             "Properties": {
-                "Name": "TodoGreenTargetGroup",
+                "Name": "Todo-Green",
                 "Port": 3000,
                 "Protocol": "HTTP",
                 "VpcId": {
@@ -921,6 +921,18 @@
                         }
                     ]
                 ]
+            }
+        },
+        "BlueTargetGroupName": {
+            "Description": "Name of the Blue Target Group",
+            "Value": {
+                "Ref": "BlueTargetGroup"
+            }
+        },
+        "GreenTargetGroupName": {
+            "Description": "Name of the Green Target Group",
+            "Value": {
+                "Ref": "GreenTargetGroup"
             }
         }
     }

@@ -1,7 +1,7 @@
 {
     "family": "todo-task",
     "networkMode": "awsvpc",
-    "executionRoleArn": "arn:aws:iam::061051226504:role/Todo-Lab-TaskExecutionRole-k7MWO06Muyzl",
+    "executionRoleArn": "arn:aws:iam::061051226504:role/Todo-Lab-TaskExecutionRole-7PVwyMTI3fpn",
     "containerDefinitions": [
         {
             "name": "todo-container",
