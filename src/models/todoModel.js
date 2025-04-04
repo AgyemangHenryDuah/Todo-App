@@ -61,7 +61,7 @@ export const TodoModel = {
         ExpressionAttributeNames: {
           '#title': 'title',
           '#description': 'description',
-          '#status': 'status',  // Use a placeholder for the reserved word "status"
+          '#status': 'status',
         },
         ExpressionAttributeValues: {
           ':title': data.title,

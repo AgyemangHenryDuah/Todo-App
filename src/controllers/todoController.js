@@ -5,7 +5,6 @@ export const TodoController = {
     try {
       const todos = await TodoModel.getAll();
       res.render('index', { todos });
-      console.log(todos);
     } catch (error) {
       next(error);
     }
