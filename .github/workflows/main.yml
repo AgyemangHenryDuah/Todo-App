@@ -63,6 +63,9 @@ jobs:
           task-definition: task-definition.json
           container-name: ${{ env.CONTAINER_DEFINITION }}
           image: ${{ steps.build-image.outputs.image }}
+          environment-variables: |
+            DYNAMODB_TABLE=db_todo_app
+            AWS_REGION=eu-west-1
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
