@@ -9,7 +9,23 @@
                     "LoadBalancerInfo": {
                         "ContainerName": "todo-container",
                         "ContainerPort": 3000
-                    }
+                    },
+                    "Environment": [
+                        {
+                            "Name": "DYNAMODB_TABLE",
+                            "Value": "db_todo_app"
+                        },
+                        {
+                            "Name": "AWS_REGION",
+                            "Value": {
+                                "Ref": "eu-west-1"
+                            }
+                        },
+                        {
+                            "Name": "PORT",
+                            "Value": "3000"
+                        }
+                    ]
                 }
             }
         }
