@@ -1,0 +1,3 @@
+template-file-path: sam-dynamodb/template.json
+parameters: {}
+tags: {}
