@@ -46,17 +46,6 @@ jobs:
           docker push $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Get deployment group from CloudFormation
-        id: get-deployment-group
-        run: |
-          DEPLOYMENT_GROUP=$(aws cloudformation describe-stacks \
-            --paramter-overrides "ImageTag=$IMAGE_TAG" \
-            --stack-name Todo-Lab \
-            --query 'Stacks[0].Outputs[?OutputKey==`CodeDeployGroupName`].OutputValue' \
-            --output text \
-            --region $AWS_REGION)
-          echo "CODEDEPLOY_DEPLOYMENT_GROUP=$DEPLOYMENT_GROUP" >> $GITHUB_ENV
-
       - name: Generate task definition
         id: render-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -74,4 +63,3 @@ jobs:
           codedeploy-appspec: appspec.json
           codedeploy-application: TodoApp
           codedeploy-deployment-group: Todo-Lab-CodeDeployGroup-UU7EIXVPCKXS
-

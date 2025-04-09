@@ -1,6 +1,12 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
     "Description": "AWS Infrstructure for Todo App",
+    "Parameters": {
+        "ImageTag": {
+            "Type": "String",
+            "Description": "Docker image tag for the Todo App"
+        }
+    },
     "Resources": {
         "TodoVPC": {
             "Type": "AWS::EC2::VPC",
