@@ -38,10 +38,10 @@ jobs:
       - name: Deploy/Update CloudFormation Stack
         run: |
           aws cloudformation deploy \
-            --template-file infrastructure/Todo-Template.json \
+            --template-file Todo-Template.json \
             --stack-name Todo-Lab \
             --parameter-overrides ImageTag=placeholder \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --capabilities CAPABILITY_IAM \
             --no-fail-on-empty-changeset
 
       # --- APPLICATION DEPLOY (CodeDeploy) ---
