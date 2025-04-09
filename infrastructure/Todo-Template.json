@@ -366,7 +366,9 @@
                 "ContainerDefinitions": [
                     {
                         "Name": "todo-container",
-                        "Image": "public.ecr.aws/b8c4r0w8/todo_repo:henryagyemang_todo_app",
+                        "Image": {
+                            "Ref": "ImageTag"
+                        },
                         "Essential": true,
                         "PortMappings": [
                             {
