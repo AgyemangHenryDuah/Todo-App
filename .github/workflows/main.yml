@@ -2,6 +2,8 @@ name: Build, Push, and Deploy
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: [main]
 
 env:
   AWS_REGION: eu-west-1
@@ -12,17 +14,16 @@ env:
   ECS_SERVICE: TodoECSService
   ECS_TASK_FAMILY: todo-task
   CONTAINER_DEFINITION: todo-container
-  # Get this from CloudFormation Outputs or use fixed name
-  CODEDEPLOY_DEPLOYMENT_GROUP: Todo-Lab-CodeDeployGroup-UU7EIXVPCKXS  
 
 jobs:
   build-and-deploy:
+    name: Build and Deploy
     runs-on: ubuntu-latest
     environment: production
     concurrency: 
       group: production-deploy
       cancel-in-progress: true
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -34,42 +35,42 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # --- INFRASTRUCTURE DEPLOY (CloudFormation) ---
-      - name: Deploy/Update CloudFormation Stack
-        run: |
-          aws cloudformation deploy \
-            --template-file Todo-Template.json \
-            --stack-name Todo-Lab \
-            --parameter-overrides ImageTag=placeholder \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset
-
-      # --- APPLICATION DEPLOY (CodeDeploy) ---
       - name: Login to Amazon Public ECR
         run: |
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
-      - name: Build and Push Docker Image
+      - name: Build Docker image
         id: build-image
         run: |
           docker build --platform linux/amd64 -t $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_PUBLIC_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Render ECS Task Definition
+      - name: Get deployment group from CloudFormation
+        id: get-deployment-group
+        run: |
+          DEPLOYMENT_GROUP=$(aws cloudformation describe-stacks \
+            --stack-name Todo-Lab \
+            --query 'Stacks[0].Outputs[?OutputKey==`CodeDeployGroupName`].OutputValue' \
+            --output text \
+            --region $AWS_REGION)
+          echo "CODEDEPLOY_DEPLOYMENT_GROUP=$DEPLOYMENT_GROUP" >> $GITHUB_ENV
+
+      - name: Generate task definition
         id: render-task
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-definition.json  # Your base task definition file
+          task-definition: task-definition.json
           container-name: ${{ env.CONTAINER_DEFINITION }}
           image: ${{ steps.build-image.outputs.image }}
 
-      - name: Deploy to ECS via CodeDeploy
+      - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.render-task.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          codedeploy-appspec: appspec.json  # Your CodeDeploy appspec file
+          codedeploy-appspec: appspec.json
           codedeploy-application: TodoApp
-          codedeploy-deployment-group: ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }}
+          codedeploy-deployment-group: Todo-Lab-CodeDeployGroup-UU7EIXVPCKXS
+
